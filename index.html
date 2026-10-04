@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>公民奇兵：主題一導學案07-08</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 遊戲畫布與基本佈局樣式 */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a202c; /* Tailwind gray-900 */
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* 防止移動端滾動和縮放 */
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 600px; /* 限制在手機比例 */
+            margin: 0 auto;
+            background-color: #2d3748; /* Tailwind gray-800 */
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* UI 覆蓋層樣式 */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+        .hidden { display: none !important; }
+        
+        /* 遊戲內 HUD 樣式 */
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .hud-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+        /* 題目顯示區域 */
+        #question-display {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #fbbf24; /* Tailwind yellow-400 */
+            text-shadow: 2px 2px 4px black;
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        /* 樣式化按鈕與輸入框 */
+        .btn {
+            padding: 12px 24px;
+            margin: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(to bottom, #3b82f6, #2563eb);
+            border: 2px solid #1d4ed8;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .input-field {
+            padding: 12px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            border: none;
+            outline: none;
+            text-align: center;
+            color: black;
+            margin-bottom: 20px;
+            width: 80%;
+            max-width: 300px;
+        }
+        
+        /* 浮動文字動畫 */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) translateX(-50%); }
+            100% { opacity: 0; transform: translateY(-50px) translateX(-50%); }
+        }
+        .floating-text {
+            position: absolute;
+            color: #4ade80; /* Tailwind green-400 */
+            font-weight: bold;
+            font-size: 1.5rem;
+            text-shadow: 1px 1px 2px black;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            z-index: 6;
+        }
+
+        .leaderboard {
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 20px;
+            width: 90%;
+            max-width: 300px;
+            border: 1px solid #4b5563; /* Tailwind gray-600 */
+        }
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            font-size: 1rem;
+        }
+        .leaderboard-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- 遊戲內抬頭顯示器 (HUD) -->
+    <div id="hud" class="hidden">
+        <div class="flex flex-col">
+            <div class="hud-text text-blue-400">指揮官: <span id="playerNameDisplay"></span></div>
+            <div class="hud-text text-yellow-400">分數: <span id="scoreDisplay">0</span></div>
+        </div>
+        <div class="hud-text text-red-400">關卡: <span id="levelDisplay">1</span>/15</div>
+        <div class="flex flex-col text-right">
+            <div class="hud-text text-green-400">士兵: <span id="soldierDisplay">1</span></div>
+            <div class="hud-text text-purple-400">武器 Lv: <span id="weaponDisplay">1</span></div>
+        </div>
+    </div>
+    
+    <!-- 顯示當前題目 -->
+    <div id="question-display" class="hidden"></div>
+    
+    <!-- 獎勵選擇畫面 -->
+    <div id="reward-screen" class="overlay hidden">
+        <h2 class="text-3xl font-bold mb-6 text-green-400 text-center">回答正確！<br><span class="text-xl text-white">請選擇戰力升級</span></h2>
+        <div class="flex flex-col gap-4 w-4/5 max-w-xs">
+            <button id="btn-add-soldier" class="btn" style="background: linear-gradient(to bottom, #22c55e, #16a34a); border-color: #15803d;">➕ 增加士兵<br><span class="text-sm font-normal">(增加射擊軌道)</span></button>
+            <button id="btn-add-weapon" class="btn" style="background: linear-gradient(to bottom, #a855f7, #9333ea); border-color: #7e22ce;">⚔ 增強武器<br><span class="text-sm font-normal">(增加子彈破壞力)</span></button>
+        </div>
+    </div>
+
+    <!-- 開始畫面 -->
+    <div id="start-screen" class="overlay">
+        <h1 class="text-4xl font-bold mb-6 text-blue-400 text-center">公民奇兵<br><span class="text-2xl text-white">主題一導學案07-08</span></h1>
+        <p class="mb-4 text-center text-gray-300 px-4">拖曳或滑動控制移動<br>射擊選項閘門回答問題<br>答對增強火力，打敗最終 Boss！</p>
+        <input type="text" id="player-name" class="input-field" placeholder="請輸入你的姓名" maxlength="10">
+        <button id="start-btn" class="btn">開始作戰</button>
+        
+        <div class="leaderboard hidden" id="start-leaderboard">
+            <h3 class="text-yellow-400 font-bold text-center mb-2">🏆 戰績排行榜 🏆</h3>
+            <div id="start-leaderboard-list"></div>
+        </div>
+    </div>
+
+    <!-- 遊戲結束/勝利畫面 -->
+    <div id="end-screen" class="overlay hidden">
+        <h1 id="end-title" class="text-4xl font-bold mb-4 text-center"></h1>
+        <p id="end-stats" class="text-xl mb-6 text-center"></p>
+        <button id="restart-btn" class="btn">重新開始</button>
+        
+        <div class="leaderboard hidden" id="end-leaderboard">
+            <h3 class="text-yellow-400 font-bold text-center mb-2">🏆 戰績排行榜 🏆</h3>
+            <div id="end-leaderboard-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('game-container');
+    
+    // UI 元素
+    const startScreen = document.getElementById('start-screen');
+    const endScreen = document.getElementById('end-screen');
+    const hud = document.getElementById('hud');
+    const questionDisplay = document.getElementById('question-display');
+    const rewardScreen = document.getElementById('reward-screen');
+    const btnAddSoldier = document.getElementById('btn-add-soldier');
+    const btnAddWeapon = document.getElementById('btn-add-weapon');
+    const playerNameInput = document.getElementById('player-name');
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    
+    // 遊戲狀態與參數
+    let gameState = 'START'; // START, PLAYING, BOSS, GAMEOVER, WIN, REWARD_CHOICE
+    let animationId;
+    let lastTime = 0;
+    let canvasWidth, canvasHeight;
+    let playerName = "Player";
+    let score = 0;
+    
+    // 載入遊戲圖片資源
+    const bgImg = new Image();
+    bgImg.src = 'https://i.postimg.cc/zfGBKXFQ/Game-Background-Top-Gun.png';
+    const playerImg = new Image();
+    playerImg.src = 'https://i.postimg.cc/htrvX7TM/Player-Character-Top-Gun.png';
+    const enemyImg = new Image();
+    enemyImg.src = 'https://i.postimg.cc/zGjvyRKg/Enemy-Character-Top-Gun.png';
+    const bossImg = new Image();
+    bossImg.src = 'https://i.postimg.cc/Bvn6HQC9/Boss-Character-Top-Gun.png';
+
+    // 學習題目資料庫 (匯入公民科導學案題目)
+    const questionsBank = [
+        { q: "以下哪一項屬於香港的傳統經濟領域？", a: "國際金融中心", b: "國際創新科技中心", ans: "A" },
+        { q: "以下哪一項屬於香港的新興經濟領域？", a: "國際航運中心", b: "中外文化藝術交流中心", ans: "B" },
+        { q: "根據CEPA，哪類貨品可享零關稅優惠進入內地市場？", a: "只限由香港本地資金生產的貨品", b: "原產地為香港的貨品，不限資金來源", ans: "B" },
+        { q: "CEPA下的「專業資格互證」屬於哪個範疇？", a: "服務貿易", b: "貨物貿易", ans: "A" },
+        { q: "CEPA的零關稅措施如何惠及出口貨品到內地的香港企業？", a: "降低營商成本，有助增加貿易及物流需求", b: "提高出口關稅，減少貿易及物流需求", ans: "A" },
+        { q: "支持內地企業在香港上市，最直接有助鞏固香港哪個地位？", a: "中外文化藝術交流中心", b: "國際金融中心", ans: "B" },
+        { q: "「滬港通」及「深港通」的主要作用是甚麼？", a: "讓兩地投資者在各自市場買賣對方市場的股票", b: "讓兩地所有貨品免檢進入對方市場", ans: "A" },
+        { q: "以下哪組是粵港澳大灣區的四大中心城市？", a: "香港、澳門、珠海、佛山", b: "香港、澳門、廣州、深圳", ans: "B" },
+        { q: "「一小時生活圈」主要如何促進大灣區發展？", a: "增加城市之間的交通時間，減少人口流動", b: "透過交通基建縮短往來時間，增加人口流動及經濟需求", ans: "B" },
+        { q: "大灣區交通網絡更高效地連接香港國際機場，有何好處？", a: "便利旅客及貨物流動，鞏固香港國際航空樞紐地位", b: "減少大灣區與世界各地的聯繫", ans: "A" },
+        { q: "香港故宮文化博物館、戲曲中心及M＋，如何支援香港發展？", a: "只提供貨物倉儲，支援物流業", b: "提供文化設施，吸引旅客並促進中外文化交流", ans: "B" },
+        { q: "以下哪項最能概括香港的社會文化特徵？", a: "以中華文化為主體，兼具多元文化", b: "只具有西方文化", ans: "A" },
+        { q: "歷代南遷人口及戰後內地移民，如何影響香港文化？", a: "延續方言及風俗等生活方式，使中華文化在香港傳承", b: "令香港不再保留中華文化的生活方式", ans: "A" },
+        { q: "根據筆記，金庸武俠小說透過報章、電視劇及電影弘揚中華文化，屬於甚麼？", a: "正規學校教育", b: "非正規教育", ans: "B" },
+        { q: "香港學生參與國際學術交流，對未來人力資源有何幫助？", a: "拓闊國際視野，提升語言、溝通及跨文化適應能力", b: "減少接觸其他文化，降低跨文化適應能力", ans: "A" }
+    ];
+    let currentQuestions = [];
+    
+    
+    class Player {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 40;
+            this.height = 40;
+            this.speed = 5;
+            this.fireRate = 200; // 發射間隔(ms)
+            this.lastFireTime = 0;
+            this.soldierCount = 1; // 控制士兵與射擊軌道數量
+            this.weaponLevel = 1;  // 控制子彈傷害
+            this.targetX = x; // 用於平滑移動
+        }
+        
+        getHitbox() {
+            // 根據縮小的 spacing 計算真實判定寬度
+            const spacing = 30;
+            return {
+                x: this.x,
+                y: this.y,
+                width: this.width + (this.soldierCount - 1) * spacing,
+                height: this.height
+            };
+        }
+        
+        draw(ctx) {
+            const spacing = 30; // 將間距從 45 縮小到 30
+            const startX = this.x - ((this.soldierCount - 1) * spacing) / 2;
+            
+            for (let i = 0; i < this.soldierCount; i++) {
+                let sx = startX + i * spacing;
+                // 使用圖片繪製，稍微加大顯示範圍不影響碰撞判定
+                ctx.drawImage(playerImg, sx - this.width/2 - 5, this.y - this.height/2 - 5, this.width + 10, this.height + 10);
+            }
+            
+            // 顯示武器等級
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`W.Lv ${this.weaponLevel}`, this.x, this.y + this.height/2 + 15);
+        }
+        
+        update(dt) {
+            // 平滑移動到目標位置
+            const dx = this.targetX - this.x;
+            this.x += dx * 0.2; // 0.2 是平滑度
+            
+            // 限制在畫面內，並將整個士兵陣列的寬度計算進去
+            const spacing = 30;
+            let totalWidth = this.width + (this.soldierCount - 1) * spacing;
+            if (this.x < totalWidth/2) this.x = totalWidth/2;
+            if (this.x > canvasWidth - totalWidth/2) this.x = canvasWidth - totalWidth/2;
+        }
+        
+        fire(currentTime, bullets) {
+            if (currentTime - this.lastFireTime > this.fireRate) {
+                const spacing = 30; // 將間距從 45 縮小到 30
+                const startX = this.x - ((this.soldierCount - 1) * spacing) / 2;
+                
+                // 根據士兵數量發射對應排數的子彈，帶有當前的武器傷害值
+                for (let i = 0; i < this.soldierCount; i++) {
+                    let sx = startX + i * spacing;
+                    bullets.push(new Bullet(sx, this.y - this.height/2, -10, this.weaponLevel));
+                }
+                this.lastFireTime = currentTime;
+            }
+        }
+    }
+
+    class Bullet {
+        constructor(x, y, vy, damage = 1) {
+            this.x = x;
+            this.y = y;
+            this.vy = vy;
+            this.radius = 4 + (damage * 0.5); // 等級越高子彈略大
+            this.color = damage >= 3 ? '#ef4444' : (damage >= 2 ? '#f97316' : '#fbbf24'); // 顏色隨等級進化
+            this.damage = damage;
+            this.markedForDeletion = false;
+        }
+        
+        update() {
+            this.y += this.vy;
+            if (this.y < 0) this.markedForDeletion = true;
+        }
+        
+        draw(ctx) {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+        }
+    }
+
+    class Enemy {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 30;
+            this.height = 30;
+            this.hp = 1; // 敵人 HP 為 1
+            this.vy = 3; // 向下移動速度
+            this.markedForDeletion = false;
+            this.passedBottom = false;
+        }
+        
+        update() {
+            this.y += this.vy;
+            if (this.y > canvasHeight) {
+                this.markedForDeletion = true;
+                if (!this.passedBottom) {
+                    this.passedBottom = true;
+                    updateScore(-5); // 讓敵人逃脫扣分
+                    showFloatingText(this.x, canvasHeight - 30, "-5", '#ef4444');
+                }
+            }
+        }
+        
+        draw(ctx) {
+            // 使用圖片繪製敵人
+            ctx.drawImage(enemyImg, this.x - this.width/2 - 5, this.y - this.height/2 - 5, this.width + 10, this.height + 10);
+        }
+        
+        hit(damage) {
+            this.hp -= damage;
+            if (this.hp <= 0) this.markedForDeletion = true;
+        }
+    }
+
+    class Gate {
+        constructor(y, qObj, playerTotalPower) {
+            this.x = canvasWidth / 2;
+            this.y = y;
+            this.width = canvasWidth * 0.8; // 佔畫面大部分寬度
+            this.height = 80;
+            this.vy = 0.8; // 緩慢下降，讓玩家有時間看題目
+            
+            this.qObj = qObj;
+            
+            // 動態計算血量：基礎血量 50 + 玩家火力加成。
+            // 確保無論玩家火力多強，都需要花費約 1.5-2 秒才能打破
+            const calculatedHp = 50 + (playerTotalPower * 5 * 1.5);
+            
+            this.leftHp = calculatedHp;
+            this.rightHp = calculatedHp;
+            this.maxHp = calculatedHp;
+            
+            this.markedForDeletion = false;
+            this.brokenSide = null; // 'A' 或 'B'
+        }
+        
+        update(playerY) {
+            this.y += this.vy;
+            // 如果閘門超過玩家，標記為刪除
+            if (this.y > playerY + 50) {
+                this.markedForDeletion = true;
+            }
+        }
+        
+        draw(ctx) {
+            if (this.markedForDeletion) return;
+            
+            let halfW = this.width / 2;
+            
+            // 左半邊 (選項 A)
+            if (this.leftHp > 0) {
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; // 藍色
+                ctx.fillRect(this.x - halfW, this.y - this.height/2, halfW - 2, this.height);
+                
+                // 血條
+                ctx.fillStyle = 'red';
+                ctx.fillRect(this.x - halfW + 10, this.y + this.height/2 - 15, halfW - 22, 5);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(this.x - halfW + 10, this.y + this.height/2 - 15, (halfW - 22) * (this.leftHp/this.maxHp), 5);
+                
+                // 文字 (自動換行處理)
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                this.wrapText(ctx, this.qObj.a, this.x - halfW/2, this.y - 10, halfW - 10, 16);
+            }
+            
+            // 右半邊 (選項 B)
+            if (this.rightHp > 0) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.8)'; // 紅色
+                ctx.fillRect(this.x + 2, this.y - this.height/2, halfW - 2, this.height);
+                
+                // 血條
+                ctx.fillStyle = 'red';
+                ctx.fillRect(this.x + 12, this.y + this.height/2 - 15, halfW - 22, 5);
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(this.x + 12, this.y + this.height/2 - 15, (halfW - 22) * (this.rightHp/this.maxHp), 5);
+                
+                // 文字 (自動換行處理)
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                this.wrapText(ctx, this.qObj.b, this.x + halfW/2, this.y - 10, halfW - 10, 16);
+            }
+        }
+        
+        // 輔助文字換行功能
+        wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+            let words = text.split(''); // 中文用單字拆分
+            let line = '';
+            let currentY = y;
+
+            for(let n = 0; n < words.length; n++) {
+                let testLine = line + words[n];
+                let metrics = ctx.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    ctx.fillText(line, x, currentY);
+                    line = words[n];
+                    currentY += lineHeight;
+                }
+                else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line, x, currentY);
+        }
+        
+        hit(bulletX, damage) {
+            if (bulletX < this.x) {
+                this.leftHp -= damage;
+                if (this.leftHp <= 0) return { broken: true, side: 'A' };
+            } else {
+                this.rightHp -= damage;
+                if (this.rightHp <= 0) return { broken: true, side: 'B' };
+            }
+            return { broken: false };
+        }
+        
+        checkAnswer(side) {
+            return side === this.qObj.ans;
+        }
+    }
+
+    class Boss {
+        constructor() {
+            this.width = 150;
+            this.height = 150;
+            this.x = canvasWidth / 2;
+            this.y = -100; // 從上方進場
+            this.maxHp = 1000; // Boss 血量較多
+            this.hp = 1000;
+            this.vy = 0.5; // 極緩慢向下
+            this.markedForDeletion = false;
+        }
+        
+        update() {
+            if (this.y < 150) {
+                this.y += this.vy; // 進場
+            } else {
+                // 左右移動
+                this.x += Math.sin(Date.now() / 500) * 2;
+            }
+        }
+        
+        draw(ctx) {
+            // 繪製 Boss 圖片
+            ctx.drawImage(bossImg, this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+            
+            // 巨大的 HP 條
+            const hpWidth = canvasWidth * 0.8;
+            ctx.fillStyle = 'red';
+            ctx.fillRect(canvasWidth * 0.1, 80, hpWidth, 20);
+            ctx.fillStyle = '#22c55e';
+            ctx.fillRect(canvasWidth * 0.1, 80, hpWidth * (this.hp/this.maxHp), 20);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`最終Boss: 知識吞噬者 (${Math.floor(this.hp)}/${this.maxHp})`, canvasWidth/2, 70);
+        }
+        
+        hit(damage) {
+            this.hp -= damage;
+            if (this.hp <= 0) this.markedForDeletion = true;
+        }
+    }
+
+    let player;
+    let bullets = [];
+    let enemies = [];
+    let gates = [];
+    let boss = null;
+    let particles = [];
+    
+    let level = 1;
+    const maxLevel = 15;
+    let nextGateDistance = 0;
+    let distanceTraveled = 0; // 用於計算何時出閘門，不再用於背景滾動
+    let enemySpawnTimer = 0;
+
+    const LEADERBOARD_KEY = 'topWarLeaderboard';
+    
+    function getLeaderboard() {
+        try {
+            const data = localStorage.getItem(LEADERBOARD_KEY);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+    
+    function saveToLeaderboard(name, score) {
+        let board = getLeaderboard();
+        board.push({ name: name || '匿名指揮官', score: score });
+        // 依分數高低排序
+        board.sort((a, b) => b.score - a.score);
+        // 只保留前 5 名
+        board = board.slice(0, 5); 
+        try {
+            localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(board));
+        } catch (e) {
+            console.warn("無法儲存排行榜資料");
+        }
+        return board;
+    }
+    
+    function renderLeaderboard(containerId, listId) {
+        const board = getLeaderboard();
+        const container = document.getElementById(containerId);
+        const list = document.getElementById(listId);
+        
+        if (board.length > 0) {
+            container.classList.remove('hidden');
+            list.innerHTML = board.map((item, index) => 
+                `<div class="leaderboard-item">
+                    <span><span class="text-gray-400 mr-2">#${index+1}</span> ${item.name}</span>
+                    <span class="text-yellow-400 font-bold">${item.score}</span>
+                </div>`
+            ).join('');
+        } else {
+            container.classList.add('hidden');
+        }
+    }
+
+    function updateScore(points) {
+        score += points;
+        if (score < 0) score = 0; // 最低 0 分
+        document.getElementById('scoreDisplay').innerText = score;
+    }
+
+    function resizeCanvas() {
+        const rect = container.getBoundingClientRect();
+        canvasWidth = rect.width;
+        canvasHeight = rect.height;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        
+        if (player) {
+            player.y = canvasHeight - 100;
+        }
+    }
+    
+    window.addEventListener('resize', resizeCanvas);
+
+    function initGame() {
+        resizeCanvas();
+        playerName = playerNameInput.value.trim() || "匿名指揮官";
+        document.getElementById('playerNameDisplay').innerText = playerName;
+        
+        player = new Player(canvasWidth / 2, canvasHeight - 100);
+        bullets = [];
+        enemies = [];
+        gates = [];
+        boss = null;
+        particles = [];
+        
+        level = 1;
+        distanceTraveled = 0;
+        nextGateDistance = 500; // 移動多遠出現第一個閘門
+        
+        score = 0;
+        updateScore(0);
+        
+        // 隨機打亂題目
+        currentQuestions = [...questionsBank].sort(() => 0.5 - Math.random());
+        
+        updateHUD();
+        
+        startScreen.classList.add('hidden');
+        endScreen.classList.add('hidden');
+        rewardScreen.classList.add('hidden');
+        hud.classList.remove('hidden');
+        
+        gameState = 'PLAYING';
+        lastTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    }
+
+    
+    function handlePointerMove(e) {
+        if (gameState !== 'PLAYING' && gameState !== 'BOSS') return;
+        
+        let clientX;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+        } else {
+            clientX = e.clientX;
+        }
+        
+        // 將螢幕坐標轉換為 Canvas 內的相對坐標
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        let canvasX = (clientX - rect.left) * scaleX;
+        
+        // 更新玩家目標位置
+        if (player) {
+            player.targetX = canvasX;
+        }
+    }
+    
+    canvas.addEventListener('mousemove', handlePointerMove);
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // 防止滾動
+        handlePointerMove(e);
+    }, { passive: false });
+    
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        handlePointerMove(e);
+    }, { passive: false });
+
+    
+    function gameLoop(currentTime) {
+        if (gameState === 'GAMEOVER' || gameState === 'WIN') return;
+        
+        const dt = currentTime - lastTime;
+        lastTime = currentTime;
+        
+        if (gameState === 'PLAYING' || gameState === 'BOSS') {
+            update(dt, currentTime);
+        }
+        
+        draw();
+        
+        animationId = requestAnimationFrame(gameLoop);
+    }
+
+    function update(dt, currentTime) {
+        // 1. 玩家更新與射擊
+        player.update(dt);
+        player.fire(currentTime, bullets);
+        
+        // 2. 子彈更新
+        bullets.forEach(bullet => bullet.update());
+        bullets = bullets.filter(b => !b.markedForDeletion);
+        
+        // 3. 生成敵人 (雜兵) - 隨關卡增加難度與頻率
+        enemySpawnTimer += dt;
+        // 初始生成間隔為 1500ms，隨關卡遞減，最低 600ms
+        let spawnInterval = Math.max(600, 1500 - ((level - 1) * 100));
+        
+        if (enemySpawnTimer > spawnInterval) { 
+            // 初始數量 1~2 隻，隨關卡增加 (避免一開始太擁擠)
+            let maxEnemies = Math.min(5, 1 + Math.floor(level / 3)); 
+            let spawnCount = Math.floor(Math.random() * maxEnemies) + 1;
+            
+            for (let i = 0; i < spawnCount; i++) {
+                let roadWidth = canvasWidth * 0.8;
+                let roadX = (canvasWidth - roadWidth) / 2;
+                let x = roadX + 15 + Math.random() * (roadWidth - 30);
+                enemies.push(new Enemy(x, -30 - (Math.random() * 50)));
+            }
+            enemySpawnTimer = 0;
+        }
+
+        if (gameState === 'PLAYING') {
+            // 增加行進距離，用於決定何時出閘門
+            distanceTraveled += 2; 
+            
+            // 4. 生成閘門 (題目)
+            if (distanceTraveled > nextGateDistance && gates.length === 0 && level <= maxLevel) {
+                // 獲取一個題目
+                let qIndex = (level - 1) % currentQuestions.length;
+                let qObj = currentQuestions[qIndex];
+                
+                // 計算玩家總火力：士兵數 * 武器等級
+                let currentPower = player.soldierCount * player.weaponLevel;
+                
+                gates.push(new Gate(-40, qObj, currentPower));
+                
+                // 顯示題目文字在畫面上方
+                questionDisplay.innerText = `Q${level}: ${qObj.q}`;
+                questionDisplay.classList.remove('hidden');
+                
+                nextGateDistance += 1200; // 延長下一個閘門的距離
+            }
+        }
+        
+        // 5. 敵人更新
+        enemies.forEach(enemy => enemy.update());
+        enemies = enemies.filter(e => !e.markedForDeletion);
+        
+        // 6. 閘門更新
+        gates.forEach(gate => {
+            gate.update(player.y);
+            // 如果閘門被錯過 (已移出畫面且未被打破)
+            if (gate.markedForDeletion && !gate.brokenSide) {
+                questionDisplay.classList.add('hidden');
+                levelUp(false); // 視為失敗或跳過
+            }
+        });
+        gates = gates.filter(g => !g.markedForDeletion);
+        
+        // 7. Boss 更新
+        if (gameState === 'BOSS' && boss) {
+            boss.update();
+        }
+
+        // 子彈 vs 敵人
+        bullets.forEach(bullet => {
+            enemies.forEach(enemy => {
+                if (!bullet.markedForDeletion && !enemy.markedForDeletion) {
+                    if (checkCollisionCircleRect(bullet, enemy)) {
+                        bullet.markedForDeletion = true;
+                        enemy.hit(bullet.damage);
+                        createParticles(bullet.x, bullet.y, 'red');
+                        
+                        if (enemy.markedForDeletion) {
+                            updateScore(10); // 擊殺敵人加分
+                        }
+                    }
+                }
+            });
+        });
+        
+        // 子彈 vs 閘門
+        bullets.forEach(bullet => {
+            gates.forEach(gate => {
+                if (!bullet.markedForDeletion && !gate.markedForDeletion) {
+                    // 簡單矩形碰撞 (只判斷 y 坐標進入範圍)
+                    if (bullet.y - bullet.radius < gate.y + gate.height/2 && 
+                        bullet.y + bullet.radius > gate.y - gate.height/2) {
+                        
+                        bullet.markedForDeletion = true;
+                        createParticles(bullet.x, bullet.y, 'white');
+                        
+                        let result = gate.hit(bullet.x, bullet.damage);
+                        
+                        if (result.broken) {
+                            gate.markedForDeletion = true;
+                            gate.brokenSide = result.side;
+                            questionDisplay.classList.add('hidden');
+                            
+                            // 判斷答對或答錯
+                            let isCorrect = gate.checkAnswer(result.side);
+                            if (isCorrect) {
+                                showFloatingText(canvasWidth/2, gate.y, "回答正確！", '#4ade80');
+                                showRewardChoice(); // 暫停並呼叫選擇畫面
+                            } else {
+                                showFloatingText(canvasWidth/2, gate.y, "回答錯誤！", '#ef4444');
+                                levelUp(true);
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        
+        // 子彈 vs Boss
+        if (gameState === 'BOSS' && boss) {
+            bullets.forEach(bullet => {
+                if (!bullet.markedForDeletion) {
+                    if (checkCollisionCircleRect(bullet, boss)) {
+                        bullet.markedForDeletion = true;
+                        boss.hit(bullet.damage);
+                        createParticles(bullet.x, bullet.y, 'red');
+                        
+                        if (boss.markedForDeletion) {
+                            updateScore(1000); // 擊殺 Boss 獲取大量分數
+                            endGame(true);
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 玩家 vs 敵人
+        enemies.forEach(enemy => {
+            if (!enemy.markedForDeletion) {
+                if (checkCollisionRectRect(player.getHitbox(), enemy)) {
+                    enemy.markedForDeletion = true;
+                    if (player.soldierCount > 1) {
+                        player.soldierCount -= 1;
+                        showFloatingText(player.x, player.y, "士兵陣亡!", '#ef4444');
+                        createParticles(player.x, player.y, 'red', 20);
+                    } else {
+                        // 士兵數量為 1 時碰到敵人則遊戲結束
+                        endGame(false, "部隊全滅！");
+                    }
+                }
+            }
+        });
+        
+        // 更新粒子
+        particles.forEach(p => p.update());
+        particles = particles.filter(p => p.life > 0);
+        
+        updateHUD();
+    }
+
+
+    function draw() {
+        // 清除畫布
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+        // 繪製固定背景圖片 (全螢幕，不移動)
+        ctx.drawImage(bgImg, 0, 0, canvasWidth, canvasHeight);
+
+        // 繪製實體
+        gates.forEach(gate => gate.draw(ctx));
+        enemies.forEach(enemy => enemy.draw(ctx));
+        if (boss) boss.draw(ctx);
+        bullets.forEach(bullet => bullet.draw(ctx));
+        player.draw(ctx);
+        particles.forEach(p => p.draw(ctx));
+    }
+    
+    function levelUp(answered) {
+        level++;
+        if (level > maxLevel) {
+            // 進入 Boss 戰
+            gameState = 'BOSS';
+            boss = new Boss();
+            enemies = []; // 清除小兵
+            gates = []; // 清除閘門
+            questionDisplay.classList.add('hidden');
+            showFloatingText(canvasWidth/2, canvasHeight/2, "警告！最終考驗出現！", '#ef4444');
+        }
+        updateHUD();
+    }
+
+    function updateHUD() {
+        document.getElementById('levelDisplay').innerText = Math.min(level, maxLevel);
+        document.getElementById('soldierDisplay').innerText = player ? player.soldierCount : 1;
+        document.getElementById('weaponDisplay').innerText = player ? player.weaponLevel : 1;
+    }
+
+    // 碰撞偵測輔助
+    function checkCollisionCircleRect(circle, rect) {
+        let testX = circle.x;
+        let testY = circle.y;
+
+        if (circle.x < rect.x - rect.width/2) testX = rect.x - rect.width/2;
+        else if (circle.x > rect.x + rect.width/2) testX = rect.x + rect.width/2;
+        
+        if (circle.y < rect.y - rect.height/2) testY = rect.y - rect.height/2;
+        else if (circle.y > rect.y + rect.height/2) testY = rect.y + rect.height/2;
+
+        let distX = circle.x - testX;
+        let distY = circle.y - testY;
+        let distance = Math.sqrt((distX*distX) + (distY*distY));
+
+        return distance <= circle.radius;
+    }
+    
+    function checkCollisionRectRect(r1, r2) {
+        // 增加 8 像素的寬容度，避免稍微碰到邊緣就判定死亡
+        const margin = 8; 
+        return (r1.x - r1.width/2 + margin < r2.x + r2.width/2 - margin &&
+                r1.x + r1.width/2 - margin > r2.x - r2.width/2 + margin &&
+                r1.y - r1.height/2 + margin < r2.y + r2.height/2 - margin &&
+                r1.y + r1.height/2 - margin > r2.y - r2.height/2 + margin);
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.vx = (Math.random() - 0.5) * 5;
+            this.vy = (Math.random() - 0.5) * 5;
+            this.life = 1.0;
+            this.decay = Math.random() * 0.05 + 0.02;
+            this.color = color;
+            this.size = Math.random() * 3 + 1;
+        }
+        update() {
+            this.x += this.vx;
+            this.y += this.vy;
+            this.life -= this.decay;
+        }
+        draw(ctx) {
+            ctx.globalAlpha = Math.max(0, this.life);
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+    
+    function createParticles(x, y, color, count = 5) {
+        for(let i=0; i<count; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+    
+    function showFloatingText(x, y, text, color) {
+        const el = document.createElement('div');
+        el.className = 'floating-text';
+        el.innerText = text;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        el.style.color = color;
+        container.appendChild(el);
+        
+        setTimeout(() => {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        }, 1000);
+    }
+
+
+    function endGame(isWin, reason = "") {
+        gameState = isWin ? 'WIN' : 'GAMEOVER';
+        cancelAnimationFrame(animationId);
+        
+        hud.classList.add('hidden');
+        questionDisplay.classList.add('hidden');
+        endScreen.classList.remove('hidden');
+        
+        const title = document.getElementById('end-title');
+        const stats = document.getElementById('end-stats');
+        
+        saveToLeaderboard(playerName, score);
+        renderLeaderboard('end-leaderboard', 'end-leaderboard-list');
+        
+        if (isWin) {
+            title.innerText = "作戰成功！";
+            title.className = "text-4xl font-bold mb-4 text-center text-green-400";
+            stats.innerHTML = `指揮官 ${playerName} 順利通關！<br>最終分數：<span class="text-yellow-400 text-2xl">${score}</span> 分<br>成功掌握所有知識點！`;
+        } else {
+            title.innerText = "作戰失敗";
+            title.className = "text-4xl font-bold mb-4 text-center text-red-500";
+            stats.innerHTML = `${reason}<br>最終分數：<span class="text-yellow-400 text-2xl">${score}</span> 分<br>指揮官 ${playerName}，請重新整備再出發！`;
+        }
+    }
+
+    // 獎勵選擇邏輯
+    function showRewardChoice() {
+        gameState = 'REWARD_CHOICE'; // 切換狀態，觸發暫停
+        rewardScreen.classList.remove('hidden');
+    }
+
+    function applyReward(type) {
+        if (type === 'soldier') {
+            player.soldierCount = Math.min(player.soldierCount + 1, 5); // 最多 5 排士兵
+            showFloatingText(player.x, player.y, "士兵數 +1", '#4ade80');
+        } else if (type === 'weapon') {
+            player.weaponLevel += 1; // 升級子彈威力
+            showFloatingText(player.x, player.y, "火力升級!", '#c084fc');
+        }
+        
+        rewardScreen.classList.add('hidden');
+        updateHUD();
+        gameState = 'PLAYING';
+        lastTime = performance.now(); // 重置計時以避免恢復後出現嚴重跳幀
+        levelUp(true);
+    }
+
+    btnAddSoldier.addEventListener('click', () => applyReward('soldier'));
+    btnAddWeapon.addEventListener('click', () => applyReward('weapon'));
+
+    startBtn.addEventListener('click', initGame);
+    restartBtn.addEventListener('click', initGame);
+    
+    // 初始化自適應與排行榜
+    resizeCanvas();
+    renderLeaderboard('start-leaderboard', 'start-leaderboard-list');
+
+</script>
+</body>
+</html>
